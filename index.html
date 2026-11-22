@@ -301,6 +301,31 @@
     footer { padding: 1.35rem 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .67rem; text-align: center; }
     footer span { color: var(--wine); }
 
+    .music-toggle {
+      position: fixed;
+      z-index: 5;
+      right: 1.25rem;
+      bottom: 1.25rem;
+      display: inline-flex;
+      align-items: center;
+      gap: .6rem;
+      padding: .8rem 1rem;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(252, 250, 245, .96);
+      box-shadow: 0 6px 24px rgba(59, 51, 47, .12);
+      color: var(--wine);
+      cursor: pointer;
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      transition: transform .2s ease, background .2s ease;
+    }
+    .music-toggle:hover { transform: translateY(-2px); background: #fff; }
+    .music-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
+    .music-toggle[hidden] { display: none; }
+    .music-toggle:disabled { cursor: not-allowed; opacity: .7; }
+
     @media (max-width: 640px) {
       .topbar { justify-content: center; padding: 1.15rem 1rem; }
       .topbar nav { display: none; }
@@ -444,15 +469,117 @@
   </main>
   <footer>Made with <span aria-label="love">♥</span> for Saurav &amp; Akanksha</footer>
 
+  <button class="music-toggle" id="music-toggle" type="button" aria-label="Play background music" aria-pressed="false" hidden>
+    <svg viewBox="0 0 20 20" width="17" height="17" fill="none" aria-hidden="true">
+      <path d="M8 15V4l9-2v11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+      <circle cx="5.5" cy="15.5" r="2.5" stroke="currentColor" stroke-width="1.5"></circle>
+      <circle cx="14.5" cy="13.5" r="2.5" stroke="currentColor" stroke-width="1.5"></circle>
+    </svg>
+    <span id="music-label">Music off</span>
+  </button>
+
   <script>
     const gate = document.getElementById("welcome-gate");
     const openGateButton = document.getElementById("open-gate");
+    const musicToggle = document.getElementById("music-toggle");
+    const musicLabel = document.getElementById("music-label");
+    const melody = [392, 440, 523.25, 587.33, 523.25, 440, 392, 329.63, 392, 440, 523.25, 659.25, 587.33, 523.25, 440, 392];
+    let audioContext;
+    let masterGain;
+    let melodyTimer = 0;
+    let melodyIndex = 0;
+
+    function updateMusicControl(isPlaying) {
+      musicToggle.setAttribute("aria-pressed", String(isPlaying));
+      musicToggle.setAttribute("aria-label", isPlaying ? "Pause background music" : "Play background music");
+      musicLabel.textContent = isPlaying ? "Music on" : "Music off";
+    }
+
+    function playMelodyNote() {
+      if (!audioContext || musicToggle.getAttribute("aria-pressed") !== "true") return;
+
+      const now = audioContext.currentTime;
+      const note = melody[melodyIndex % melody.length];
+      melodyIndex += 1;
+      const envelope = audioContext.createGain();
+      const fundamental = audioContext.createOscillator();
+      const overtone = audioContext.createOscillator();
+      fundamental.type = "sine";
+      fundamental.frequency.setValueAtTime(note, now);
+      overtone.type = "triangle";
+      overtone.frequency.setValueAtTime(note * 2, now);
+      envelope.gain.setValueAtTime(0.0001, now);
+      envelope.gain.exponentialRampToValueAtTime(0.055, now + 0.2);
+      envelope.gain.exponentialRampToValueAtTime(0.0001, now + 1.8);
+      fundamental.connect(envelope);
+      overtone.connect(envelope);
+      envelope.connect(masterGain);
+      fundamental.start(now);
+      overtone.start(now);
+      fundamental.stop(now + 1.85);
+      overtone.stop(now + 1.85);
+      melodyTimer = window.setTimeout(playMelodyNote, 1_250);
+    }
+
+    async function toggleMusic(isPlaying) {
+      if (!isPlaying && audioContext && masterGain) {
+        window.clearTimeout(melodyTimer);
+        melodyTimer = 0;
+        masterGain.gain.setTargetAtTime(0.0001, audioContext.currentTime, 0.12);
+        updateMusicControl(false);
+        return;
+      }
+
+      const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextConstructor) {
+        musicToggle.disabled = true;
+        musicLabel.textContent = "Music unavailable";
+        musicToggle.setAttribute("aria-label", "Background music is unavailable in this browser");
+        return;
+      }
+
+      try {
+        audioContext ??= new AudioContextConstructor();
+        await audioContext.resume();
+        if (!masterGain) {
+          masterGain = audioContext.createGain();
+          masterGain.gain.value = 0.0001;
+          masterGain.connect(audioContext.destination);
+
+          const droneGain = audioContext.createGain();
+          droneGain.gain.value = 0.018;
+          droneGain.connect(masterGain);
+          for (const [frequency, detune] of [[146.83, -2], [220, 2], [293.66, 0]]) {
+            const drone = audioContext.createOscillator();
+            drone.type = "sine";
+            drone.frequency.value = frequency;
+            drone.detune.value = detune;
+            drone.connect(droneGain);
+            drone.start();
+          }
+        }
+
+        masterGain.gain.setTargetAtTime(0.42, audioContext.currentTime, 0.35);
+        updateMusicControl(true);
+        if (!melodyTimer) playMelodyNote();
+      } catch (error) {
+        musicToggle.disabled = true;
+        musicLabel.textContent = "Music unavailable";
+        musicToggle.setAttribute("aria-label", "Background music is unavailable");
+        console.error("Could not start the wedding music:", error);
+      }
+    }
 
     window.addEventListener("DOMContentLoaded", () => openGateButton.focus());
     openGateButton.addEventListener("click", () => {
       gate.classList.add("is-opening");
       document.body.classList.remove("gate-open");
+      musicToggle.hidden = false;
+      void toggleMusic(true);
       window.setTimeout(() => gate.remove(), 950);
+    });
+    musicToggle.addEventListener("click", () => {
+      void toggleMusic(musicToggle.getAttribute("aria-pressed") !== "true");
     });
 
     const countdown = document.getElementById("countdown");
