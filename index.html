@@ -324,35 +324,7 @@
     .music-toggle:hover { transform: translateY(-2px); background: #fff; }
     .music-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; }
     .music-toggle[hidden] { display: none; }
-    .music-panel {
-      position: fixed;
-      z-index: 6;
-      right: 1.25rem;
-      bottom: 4.9rem;
-      width: min(320px, calc(100vw - 2.5rem));
-      padding: .8rem;
-      border: 1px solid var(--line);
-      background: var(--paper-light);
-      box-shadow: 0 12px 36px rgba(59, 51, 47, .2);
-    }
-    .music-panel[hidden] { display: none; }
-    .music-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .65rem; }
-    .music-panel-title { color: var(--wine); font-family: var(--serif); font-size: .95rem; }
-    .music-close {
-      display: grid;
-      width: 2rem;
-      height: 2rem;
-      place-items: center;
-      border: 0;
-      border-radius: 50%;
-      background: transparent;
-      color: var(--ink);
-      cursor: pointer;
-      font-size: 1.2rem;
-    }
-    .music-close:hover { background: var(--paper); }
-    .music-frame { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; background: #2b2422; }
-    .music-youtube-link { display: inline-block; margin-top: .65rem; color: var(--wine); font-size: .65rem; text-decoration: underline; text-underline-offset: 3px; }
+    .music-toggle:disabled { cursor: not-allowed; opacity: .7; }
 
     @media (max-width: 640px) {
       .topbar { justify-content: center; padding: 1.15rem 1rem; }
@@ -497,41 +469,50 @@
   </main>
   <footer>Made with <span aria-label="love">♥</span> for Saurav &amp; Akanksha</footer>
 
-  <div class="music-panel" id="music-panel" role="dialog" aria-label="Wedding song player" hidden>
-    <div class="music-panel-header">
-      <span class="music-panel-title">Sajan Sajan remix · YouTube</span>
-      <button class="music-close" id="music-close" type="button" aria-label="Close music player">×</button>
-    </div>
-    <iframe class="music-frame" id="music-frame" title="Sajan Sajan remix YouTube player" allow="autoplay; encrypted-media; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-    <a class="music-youtube-link" href="https://youtu.be/YW7Uc5_ixtM" target="_blank" rel="noopener noreferrer">Open on YouTube ↗</a>
-  </div>
-  <button class="music-toggle" id="music-toggle" type="button" aria-label="Play wedding song" aria-haspopup="dialog" aria-expanded="false" hidden>
+  <audio id="wedding-music" preload="none" loop>
+    <source src="assets/wedding-song.mp3" type="audio/mpeg">
+  </audio>
+  <button class="music-toggle" id="music-toggle" type="button" aria-label="Play background music" aria-pressed="false" hidden>
     <svg viewBox="0 0 20 20" width="17" height="17" fill="none" aria-hidden="true">
       <path d="M8 15V4l9-2v11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
       <circle cx="5.5" cy="15.5" r="2.5" stroke="currentColor" stroke-width="1.5"></circle>
       <circle cx="14.5" cy="13.5" r="2.5" stroke="currentColor" stroke-width="1.5"></circle>
     </svg>
-    <span id="music-label">Play wedding song</span>
+    <span id="music-label">Play music</span>
   </button>
 
   <script>
     const gate = document.getElementById("welcome-gate");
     const openGateButton = document.getElementById("open-gate");
     const musicToggle = document.getElementById("music-toggle");
-    const musicPanel = document.getElementById("music-panel");
-    const musicFrame = document.getElementById("music-frame");
-    const musicClose = document.getElementById("music-close");
+    const weddingMusic = document.getElementById("wedding-music");
     const musicLabel = document.getElementById("music-label");
-    function setMusicPlayerOpen(isOpen) {
-      musicPanel.hidden = !isOpen;
-      musicToggle.setAttribute("aria-expanded", String(isOpen));
-      musicToggle.setAttribute("aria-label", isOpen ? "Close wedding song player" : "Play wedding song");
-      musicLabel.textContent = isOpen ? "Close music player" : "Play wedding song";
+    weddingMusic.volume = 0.55;
 
-      if (isOpen) {
-        musicFrame.src = "https://www.youtube-nocookie.com/embed/YW7Uc5_ixtM?autoplay=1&playsinline=1&rel=0";
-      } else {
-        musicFrame.removeAttribute("src");
+    function updateMusicControl(isPlaying) {
+      musicToggle.setAttribute("aria-pressed", String(isPlaying));
+      musicToggle.setAttribute("aria-label", isPlaying ? "Pause background music" : "Play background music");
+      musicLabel.textContent = isPlaying ? "Music on" : "Play music";
+    }
+
+    async function toggleMusic() {
+      if (!weddingMusic.paused) {
+        weddingMusic.pause();
+        updateMusicControl(false);
+        return;
+      }
+
+      try {
+        await weddingMusic.play();
+        updateMusicControl(true);
+      } catch (error) {
+        updateMusicControl(false);
+        if (error instanceof DOMException && error.name === "NotAllowedError") {
+          musicLabel.textContent = "Tap to play music";
+          return;
+        }
+        musicLabel.textContent = "Music unavailable";
+        console.error("Could not play the wedding music:", error);
       }
     }
 
@@ -540,15 +521,11 @@
       gate.classList.add("is-opening");
       document.body.classList.remove("gate-open");
       musicToggle.hidden = false;
-      setMusicPlayerOpen(true);
+      void toggleMusic();
       window.setTimeout(() => gate.remove(), 950);
     });
     musicToggle.addEventListener("click", () => {
-      setMusicPlayerOpen(musicPanel.hidden);
-    });
-    musicClose.addEventListener("click", () => {
-      setMusicPlayerOpen(false);
-      musicToggle.focus();
+      void toggleMusic();
     });
 
     const countdown = document.getElementById("countdown");
